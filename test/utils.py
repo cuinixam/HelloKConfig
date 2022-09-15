@@ -9,6 +9,7 @@ class TestDir:
 
     def write_file(self, content: str, name: str) -> Path:
         file = self.path.joinpath(name)
+        file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text(content)
         return file
 
