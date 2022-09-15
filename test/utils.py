@@ -13,6 +13,9 @@ class TestDir:
         file.write_text(content)
         return file
 
+    def joinpath(self, path: str) -> Path:
+        return self.path.joinpath(path)
+
 
 class TestUtils:
     DEFAULT_TEST_DIR = 'tmp_test'

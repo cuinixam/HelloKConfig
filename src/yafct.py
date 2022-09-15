@@ -54,3 +54,6 @@ class YaFct:
         for n in self.config.node_iter(False):
             write_node(n)
         return config_dict
+
+    def generate_header(self, output_file: Path):
+        self.config.write_autoconf(filename=output_file)

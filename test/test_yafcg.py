@@ -260,3 +260,33 @@ CONFIG_NAME="John Smith"
         os.environ['COMMON_PATH'] = 'common'
         iut = YaFct(feature_model_file, user_config)
         assert iut.get_json_values() == {'COMMON_BOOL': True, 'FIRST_BOOL': True, 'FIRST_NAME': 'Dude'}
+
+    def test_generate_header_file(self):
+        """
+        KConfigLib can generate the configuration as C-header file (like autoconf.h)
+        """
+        out_dir = TestUtils.create_clean_test_dir('')
+        feature_model_file = out_dir.write_file("""
+                menu "First menu"
+                    config FIRST_BOOL
+                        bool "You can select FIRST_BOOL"
+                    config FIRST_NAME
+                        string "You can select FIRST_NAME"
+                endmenu
+                """, 'kconfig.txt')
+
+        user_config = out_dir.write_file(textwrap.dedent("""
+                    CONFIG_FIRST_BOOL=y
+                    CONFIG_FIRST_NAME="Dude"
+                    """), 'user.config')
+        iut = YaFct(feature_model_file, user_config)
+        header_file = out_dir.joinpath('header.h')
+        iut.generate_header(header_file)
+        assert header_file.exists()
+        assert header_file.read_text() == """#define CONFIG_FIRST_BOOL 1\n#define CONFIG_FIRST_NAME "Dude"\n"""
+        timestamp = header_file.stat().st_ctime
+        iut.generate_header(header_file)
+        assert header_file.stat().st_ctime == timestamp, "the file shall not be written if content is not changed"
+        header_file.write_text('')
+        iut.generate_header(header_file)
+        assert header_file.stat().st_ctime == timestamp, "overwrite the file if content changes"
