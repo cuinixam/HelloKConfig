@@ -1,3 +1,4 @@
+import argparse
 import os
 from contextlib import contextmanager
 from pathlib import Path
@@ -16,7 +17,7 @@ def working_directory(some_directory: Path):
         os.chdir(current_directory)
 
 
-class YaFct:
+class KConfig:
     def __init__(self, k_config_model_file: Path, k_config_file: Path = None,
                  k_config_root_directory: Path = None):
         """
@@ -56,4 +57,37 @@ class YaFct:
         return config_dict
 
     def generate_header(self, output_file: Path):
+        output_file.parent.mkdir(parents=True, exist_ok=True)
         self.config.write_autoconf(filename=output_file)
+
+
+def to_path(input_path: str, check_if_exists: bool = True) -> Path:
+    return_path = Path(input_path)
+    if not check_if_exists or return_path.exists():
+        return return_path.absolute()
+    else:
+        raise FileNotFoundError(input_path)
+
+
+def existing_path(input_path: str) -> Path:
+    return to_path(input_path, True)
+
+
+def non_existing_path(input_path: str) -> Path:
+    return to_path(input_path, False)
+
+
+def main():
+    parser = argparse.ArgumentParser(description='KConfig generation')
+    parser.add_argument('--kconfig_model_file', required=True, type=existing_path)
+    parser.add_argument('--kconfig_config_file', required=False, type=existing_path)
+    parser.add_argument('--out_header_file', required=True, type=non_existing_path)
+    arguments = parser.parse_args()
+    KConfig(
+        arguments.kconfig_model_file,
+        arguments.kconfig_config_file
+    ).generate_header(arguments.out_header_file)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,11 +1,12 @@
 import os
 import textwrap
+from unittest.mock import patch
 
-from src.yafct import YaFct
-from test.utils import TestUtils
+from src.kconfig import KConfig, main
+from test.test_utils import TestUtils
 
 
-class TestYaFct:
+class TestKConfig:
     def test_create_json(self):
         out_dir = TestUtils.create_clean_test_dir('')
         feature_model_file = out_dir.write_file("""
@@ -16,7 +17,7 @@ class TestYaFct:
             string "Defines your status"
             default "ALIVE"
         """, 'kconfig.txt')
-        iut = YaFct(feature_model_file)
+        iut = KConfig(feature_model_file)
         assert iut.get_json_values() == {'NAME': 'John Smith', 'STATUS': 'ALIVE'}
 
     def test_load_user_config_file(self):
@@ -31,7 +32,7 @@ CONFIG_UNKNOWN="y"
 CONFIG_NAME="John Smith" 
         """, 'user.config')
 
-        iut = YaFct(feature_model_file, user_config)
+        iut = KConfig(feature_model_file, user_config)
         assert iut.get_json_values() == {'NAME': 'John Smith'}
 
     def test_load_user_config_file_with_malformed_content(self):
@@ -48,7 +49,7 @@ CONFIG_NAME="John Smith"
  CONFIG_NAME="John Smith" 
         """, 'user.config')
 
-        iut = YaFct(feature_model_file, user_config)
+        iut = KConfig(feature_model_file, user_config)
         assert iut.get_json_values() == {'NAME': 'No Name'}
 
     def test_boolean_without_description(self):
@@ -73,7 +74,7 @@ CONFIG_NAME="John Smith"
         CONFIG_SECOND_NAME="King"
         """), 'user.config')
 
-        iut = YaFct(feature_model_file, user_config)
+        iut = KConfig(feature_model_file, user_config)
         assert iut.get_json_values() == {'FIRST_NAME': 'Dude'}
 
     def test_boolean_with_description(self):
@@ -95,7 +96,7 @@ CONFIG_NAME="John Smith"
         CONFIG_FIRST_NAME="Dude"
         """), 'user.config')
 
-        iut = YaFct(feature_model_file, user_config)
+        iut = KConfig(feature_model_file, user_config)
         assert iut.get_json_values() == {'FIRST_NAME': 'Dude', 'FIRST_BOOL': True}
 
     def test_define_boolean_choices(self):
@@ -128,7 +129,7 @@ CONFIG_NAME="John Smith"
         CONFIG_APP_VERSION="APP_VERSION_1"
         """), 'user.config')
 
-        iut = YaFct(feature_model_file, user_config)
+        iut = KConfig(feature_model_file, user_config)
         assert iut.get_json_values() == {'APP_VERSION_1': True, 'APP_VERSION_2': False}
 
     def test_define_string_choices(self):
@@ -158,7 +159,7 @@ CONFIG_NAME="John Smith"
         CONFIG_APP_VERSION_1="VERSION_NEW"
         """), 'user.config')
 
-        iut = YaFct(feature_model_file, user_config)
+        iut = KConfig(feature_model_file, user_config)
         assert iut.get_json_values() == {'APP_VERSION_1': 'VERSION_NEW', 'APP_VERSION_2': ''}
 
     def test_define_tristate_choices(self):
@@ -187,7 +188,7 @@ CONFIG_NAME="John Smith"
         CONFIG_APP_VERSION="APP_VERSION_1"
         """), 'user.config')
 
-        iut = YaFct(feature_model_file, user_config)
+        iut = KConfig(feature_model_file, user_config)
         assert iut.get_json_values() == {'APP_VERSION_1': True, 'APP_VERSION_2': False}
 
     def test_config_including_other_config(self):
@@ -225,7 +226,7 @@ CONFIG_NAME="John Smith"
         CONFIG_COMMON_BOOL=y
         CONFIG_NEW_BOOL=y
         """), 'user.config')
-        iut = YaFct(feature_model_file, user_config)
+        iut = KConfig(feature_model_file, user_config)
         assert iut.get_json_values() == {
             'COMMON_BOOL': True,
             'FIRST_BOOL': True,
@@ -258,10 +259,10 @@ CONFIG_NAME="John Smith"
         CONFIG_COMMON_BOOL=y
         """), 'user.config')
         os.environ['COMMON_PATH'] = 'common'
-        iut = YaFct(feature_model_file, user_config)
+        iut = KConfig(feature_model_file, user_config)
         assert iut.get_json_values() == {'COMMON_BOOL': True, 'FIRST_BOOL': True, 'FIRST_NAME': 'Dude'}
 
-    def test_generate_header_file(self):
+    def test_generate_header_file_running_main(self):
         """
         KConfigLib can generate the configuration as C-header file (like autoconf.h)
         """
@@ -279,8 +280,38 @@ CONFIG_NAME="John Smith"
                     CONFIG_FIRST_BOOL=y
                     CONFIG_FIRST_NAME="Dude"
                     """), 'user.config')
-        iut = YaFct(feature_model_file, user_config)
-        header_file = out_dir.joinpath('header.h')
+        header_file = out_dir.joinpath('gen/header.h')
+
+        with patch('sys.argv', [
+            'kconfig',
+            '--kconfig_model_file', f"{feature_model_file}",
+            '--kconfig_config_file', f"{user_config}",
+            '--out_header_file', f"{header_file}"
+        ]):
+            main()
+        assert header_file.exists()
+        assert header_file.read_text() == """#define CONFIG_FIRST_BOOL 1\n#define CONFIG_FIRST_NAME "Dude"\n"""
+
+    def test_header_file_written_when_changed(self):
+        """
+        KConfigLib can generate the configuration as C-header file (like autoconf.h)
+        """
+        out_dir = TestUtils.create_clean_test_dir('')
+        feature_model_file = out_dir.write_file("""
+                menu "First menu"
+                    config FIRST_BOOL
+                        bool "You can select FIRST_BOOL"
+                    config FIRST_NAME
+                        string "You can select FIRST_NAME"
+                endmenu
+                """, 'kconfig.txt')
+
+        user_config = out_dir.write_file(textwrap.dedent("""
+                    CONFIG_FIRST_BOOL=y
+                    CONFIG_FIRST_NAME="Dude"
+                    """), 'user.config')
+        iut = KConfig(feature_model_file, user_config)
+        header_file = out_dir.joinpath('gen/header.h')
         iut.generate_header(header_file)
         assert header_file.exists()
         assert header_file.read_text() == """#define CONFIG_FIRST_BOOL 1\n#define CONFIG_FIRST_NAME "Dude"\n"""
